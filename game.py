@@ -42,13 +42,16 @@ class Game:
 
     def process_turn(self, discord_tag: str, card_id: int | None, wild_color: Color | None):
         player = next(player for player in self.players if player.discord_tag == discord_tag)
-        if card_id is None:
+        p = 1
+        if card_id is None:  # draw card button pressed
             self.pick_up_cards(player, 1 + self.pickup_stack)
             self.pickup_stack = 0
+            self.currentPlayer = self.players[
+                (self.players.index(self.currentPlayer) + p * self.is_reversed) % len(self.players)]
             return
         cards = self.playersToCards[player]
         card = next(card for card in cards if card.id == card_id)
-        p = 1
+        pickup_stack_exists = self.pickup_stack != 0
         if not self.is_playable(card):
             raise RuntimeError()
         if card is Reverse:
@@ -62,11 +65,23 @@ class Game:
             self.current_color = wild_color
         elif card is Wild:
             self.current_color = wild_color
+        elif card is Number:
+            if card.color != self.current_color:
+                self.current_color = card.color
 
+        if not card.is_plus_card or not pickup_stack_exists:
+            self.pick_up_cards(player, self.pickup_stack)
+            self.pickup_stack = 0
         # todo: implement pickup logic
         # todo: implement wild stack logic
         self.currentPlayer = self.players[
             (self.players.index(self.currentPlayer) + p * self.is_reversed) % len(self.players)]
+        self.current_card = card
+        self.playersToCards[player].remove(card)
+        self.check_game_finished(player)
+
+    def check_game_finished(self, player: _Player) -> bool:
+        return len(self.playersToCards[player]) == 0
 
     def is_playable(self, new_card: Card) -> bool:
         if new_card is Wild or new_card is WildPlus:

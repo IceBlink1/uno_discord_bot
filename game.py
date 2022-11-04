@@ -12,7 +12,7 @@ class _GameState(Enum):
     DESTROYED = 6  # not sure if we need it
 
 
-class _Player:
+class Player:
     discord_tag: str
     nickname: str
 
@@ -23,13 +23,13 @@ class _Player:
 
 class Game:
     state: _GameState
-    players: list[_Player] = []
-    playersToCards: dict[_Player, list[Card]] = {}
-    deck: list[Card]
+    players: list[Player] = []
+    playersToCards: dict[Player, list[Card]] = {}
+    deck: list[Card] = []
     current_card: Card
     current_color: Color
-    admin: _Player
-    currentPlayer: _Player
+    admin: Player
+    current_player: Player
     pickup_stack = 0
     max_card_id = -1
     is_reversed = 1  # -1 if reversed
@@ -37,17 +37,38 @@ class Game:
     on_ready_callbacks: list[Callable[[], None]] = []
     on_started_callbacks: list[Callable[[], None]] = []
     on_ongoing_callbacks: list[Callable[[], None]] = []
-    on_finished_callbacks: list[Callable[[], None]] = []
+    on_finished_callbacks: list[Callable[[Player], None]] = []
     on_destroyed_callbacks: list[Callable[[], None]] = []
+    on_initialized_callbacks: list[Callable[[], None]] = []
+
+    def start_game(self):
+        if self.state != _GameState.READY_TO_START:
+            raise RuntimeError(f'start_game, incorrect state: {self.state}')
+        self.state = _GameState.STARTED
+        self.__on_started__()
+
+        self.current_player = self.admin
+        self.__refill_deck__()
+        self.__put_first_card__()
+        for player in self.players:
+            self.__pick_up_cards__(player, 7)
+
+        self.state = _GameState.ONGOING
+        self.__on_ongoing__()
 
     def process_turn(self, discord_tag: str, card_id: int | None, wild_color: Color | None):
+        if self.state != _GameState.ONGOING:
+            raise RuntimeError(f'process_turn, incorrect state: {self.state}')
         player = next(player for player in self.players if player.discord_tag == discord_tag)
+        if player != self.current_player:
+            raise RuntimeError(
+                f'process_turn, incorrect player: {player.discord_tag}, expected {self.current_player.discord_tag}')
         p = 1
         if card_id is None:  # draw card button pressed
-            self.pick_up_cards(player, 1 + self.pickup_stack)
+            self.__pick_up_cards__(player, 1 + self.pickup_stack)
             self.pickup_stack = 0
-            self.currentPlayer = self.players[
-                (self.players.index(self.currentPlayer) + p * self.is_reversed) % len(self.players)]
+            self.current_player = self.players[
+                (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
             return
         cards = self.playersToCards[player]
         card = next(card for card in cards if card.id == card_id)
@@ -70,17 +91,20 @@ class Game:
                 self.current_color = card.color
 
         if not card.is_plus_card or not pickup_stack_exists:
-            self.pick_up_cards(player, self.pickup_stack)
+            self.__pick_up_cards__(player, self.pickup_stack)
             self.pickup_stack = 0
         # todo: implement pickup logic
         # todo: implement wild stack logic
-        self.currentPlayer = self.players[
-            (self.players.index(self.currentPlayer) + p * self.is_reversed) % len(self.players)]
+        self.current_player = self.players[
+            (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
         self.current_card = card
         self.playersToCards[player].remove(card)
-        self.check_game_finished(player)
+        finished = self.__check_game_finished__(player)
+        if finished:
+            self.state = _GameState.FINISHED
+            self.__on_finished__(player)
 
-    def check_game_finished(self, player: _Player) -> bool:
+    def __check_game_finished__(self, player: Player) -> bool:
         return len(self.playersToCards[player]) == 0
 
     def is_playable(self, new_card: Card) -> bool:
@@ -90,49 +114,57 @@ class Game:
             return True
         return new_card is Number and self.current_card is Number and new_card.number == self.current_card.number
 
-    def pick_up_cards(self, player: _Player, count: int):
+    def __put_first_card__(self):
+        first_card = next(card for card in self.deck if isinstance(card, Number))
+        self.current_card = first_card
+        self.current_color = first_card.color
+        self.deck.remove(first_card)
+
+    def __pick_up_cards__(self, player: Player, count: int):
         for i in range(count):
             if len(self.deck) == 0:
-                self.refill_deck()
+                self.__refill_deck__()
+            if not player in self.playersToCards:
+                self.playersToCards[player] = []
             self.playersToCards[player].append(self.deck.pop())
 
-    def refill_deck(self):
+    def __refill_deck__(self):
         for i in range(10):
-            self.deck += self.create_number_cards(i)
+            self.deck += self.__create_number_cards__(i)
             if i != 0:
-                self.deck += self.create_number_cards(i)
-        self.create_plus_cards()
-        self.create_wild_cards()
-        self.create_reverse_cards()
-        self.create_skip_cards()
+                self.deck += self.__create_number_cards__(i)
+        self.__create_plus_cards__()
+        self.__create_wild_cards__()
+        self.__create_reverse_cards__()
+        self.__create_skip_cards__()
         random.shuffle(self.deck)
 
-    def create_reverse_cards(self):
+    def __create_reverse_cards__(self):
         for color in range(1, 5):
             for i in range(2):
                 self.max_card_id += 1
                 self.deck.append(Reverse(Color(color), self.max_card_id))
 
-    def create_skip_cards(self):
+    def __create_skip_cards__(self):
         for color in range(1, 5):
             for i in range(2):
                 self.max_card_id += 1
                 self.deck.append(Skip(Color(color), self.max_card_id))
 
-    def create_plus_cards(self):
+    def __create_plus_cards__(self):
         for color in range(1, 5):
             for j in range(2):
                 self.max_card_id += 1
                 self.deck.append(Plus(Color(color), self.max_card_id))
 
-    def create_wild_cards(self):
+    def __create_wild_cards__(self):
         for i in range(4):
             self.max_card_id += 1
             self.deck.append(WildPlus(self.max_card_id))
             self.max_card_id += 1
             self.deck.append(Wild(self.max_card_id))
 
-    def create_number_cards(self, number: int) -> list[Card]:
+    def __create_number_cards__(self, number: int) -> list[Card]:
         r = Number(Color.RED, number, self.max_card_id + 1)
         b = Number(Color.GREEN, number, self.max_card_id + 2)
         g = Number(Color.GREEN, number, self.max_card_id + 3)
@@ -142,36 +174,53 @@ class Game:
 
     def __init__(self, admin):
         self.state = _GameState.INITIALIZED
-        self.__admin__ = admin
+        self.admin = admin
         self.players.append(admin)
 
-    def add_player(self, player: _Player):
-        if self.state != _GameState.READY_TO_START:
-            return
-        else:
-            self.players.append(player)
+    def add_player(self, player: Player):
+        if self.state != _GameState.INITIALIZED and self.state != _GameState.READY_TO_START:
+            raise RuntimeError(f'add_player, incorrect state: {self.state}')
+        self.players.append(player)
+        if self.state == _GameState.INITIALIZED and len(self.players) >= 2:
+            self.state = _GameState.READY_TO_START
+            self.__on_ready__()
 
-    def on_ready(self):
+    def remove_player(self, player: Player):
+        if self.state != _GameState.INITIALIZED and self.state != _GameState.READY_TO_START:
+            raise RuntimeError(f'remove_player, incorrect state: {self.state}')
+        if self.admin == player:
+            raise RuntimeError(f'remove_player, cannot remove admin from game')
+        self.players.remove(player)
+        if self.state == _GameState.READY_TO_START and len(self.players) < 2:
+            self.state = _GameState.INITIALIZED
+            self.__on_initialized__()
+
+    def __on_ready__(self):
         if self.state == _GameState.READY_TO_START:
             for callback in self.on_ready_callbacks:
                 callback()
 
-    def on_started(self):
+    def __on_started__(self):
         if self.state == _GameState.STARTED:
             for callback in self.on_started_callbacks:
                 callback()
 
-    def on_ongoing(self):
+    def __on_ongoing__(self):
         if self.state == _GameState.ONGOING:
             for callback in self.on_ongoing_callbacks:
                 callback()
 
-    def on_finished(self):
+    def __on_finished__(self, winner: Player):
         if self.state == _GameState.FINISHED:
             for callback in self.on_finished_callbacks:
-                callback()
+                callback(winner)
 
-    def on_destroyed(self):
+    def __on_destroyed__(self):
         if self.state == _GameState.DESTROYED:
             for callback in self.on_destroyed_callbacks:
+                callback()
+
+    def __on_initialized__(self):
+        if self.state == _GameState.INITIALIZED:
+            for callback in self.on_initialized_callbacks:
                 callback()

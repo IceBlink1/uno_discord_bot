@@ -1,16 +1,27 @@
-# This is a sample Python script.
+import discord
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
+from game import *
+from discord.ext import commands
+TOKEN = 'your token'
+# 285615713280
+
+bot = commands.Bot(case_insensitive=True, intents=discord.Intents.all(), command_prefix='/')
 
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
+bot.run(token=TOKEN)
 
+# if __name__ == '__main__':
+#     a = Player("a", "a")
+#     b = Player("b", "b")
+#     c = Player('c', 'c')
+#     g = Game(admin=a)
+#     g.add_player(b)
+#     g.add_player(c)
+#     g.start_game()
+#     print(g)
+#     g.process_turn(a.discord_tag, None, None)
+#     g.process_turn(c.discord_tag, None, None)
+#     g.process_turn(b.discord_tag, None, None)
+#     g.process_turn(a.discord_tag, None, None)
+#     print(g)
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/

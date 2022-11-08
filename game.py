@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Coroutine, Awaitable
 from card import *
 import random
 
@@ -34,12 +34,12 @@ class Game:
     max_card_id = -1
     is_reversed = 1  # -1 if reversed
 
-    on_ready_callbacks: list[Callable[[], None]] = []
-    on_started_callbacks: list[Callable[[], None]] = []
-    on_ongoing_callbacks: list[Callable[[], None]] = []
-    on_finished_callbacks: list[Callable[[Player], None]] = []
-    on_destroyed_callbacks: list[Callable[[], None]] = []
-    on_initialized_callbacks: list[Callable[[], None]] = []
+    on_ready_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_started_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_ongoing_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_finished_callbacks: list[Callable[[Player], Awaitable[None]]] = []
+    on_destroyed_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_initialized_callbacks: list[Callable[[], Awaitable[None]]] = []
 
     def start_game(self):
         if self.state != _GameState.READY_TO_START:
@@ -180,6 +180,8 @@ class Game:
     def add_player(self, player: Player):
         if self.state != _GameState.INITIALIZED and self.state != _GameState.READY_TO_START:
             raise RuntimeError(f'add_player, incorrect state: {self.state}')
+        if next((p for p in self.players if player.discord_tag == p.discord_tag), None) is not None:
+            raise RuntimeError(f'add_player, cannot add already existing player {player.nickname}')
         self.players.append(player)
         if self.state == _GameState.INITIALIZED and len(self.players) >= 2:
             self.state = _GameState.READY_TO_START
@@ -195,32 +197,32 @@ class Game:
             self.state = _GameState.INITIALIZED
             self.__on_initialized__()
 
-    def __on_ready__(self):
+    async def __on_ready__(self):
         if self.state == _GameState.READY_TO_START:
             for callback in self.on_ready_callbacks:
-                callback()
+                await callback()
 
-    def __on_started__(self):
+    async def __on_started__(self):
         if self.state == _GameState.STARTED:
             for callback in self.on_started_callbacks:
-                callback()
+                await callback()
 
-    def __on_ongoing__(self):
+    async def __on_ongoing__(self):
         if self.state == _GameState.ONGOING:
             for callback in self.on_ongoing_callbacks:
-                callback()
+                await callback()
 
-    def __on_finished__(self, winner: Player):
+    async def __on_finished__(self, winner: Player):
         if self.state == _GameState.FINISHED:
             for callback in self.on_finished_callbacks:
-                callback(winner)
+                await callback(winner)
 
-    def __on_destroyed__(self):
+    async def __on_destroyed__(self):
         if self.state == _GameState.DESTROYED:
             for callback in self.on_destroyed_callbacks:
-                callback()
+                await callback()
 
-    def __on_initialized__(self):
+    async def __on_initialized__(self):
         if self.state == _GameState.INITIALIZED:
             for callback in self.on_initialized_callbacks:
-                callback()
+                await callback()

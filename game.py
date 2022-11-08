@@ -3,7 +3,7 @@ from card import *
 import random
 
 
-class _GameState(Enum):
+class GameState(Enum):
     INITIALIZED = 1
     READY_TO_START = 2
     STARTED = 3
@@ -22,7 +22,7 @@ class Player:
 
 
 class Game:
-    state: _GameState
+    state: GameState
     players: list[Player] = []
     playersToCards: dict[Player, list[Card]] = {}
     deck: list[Card] = []
@@ -40,12 +40,13 @@ class Game:
     on_finished_callbacks: list[Callable[[Player], Awaitable[None]]] = []
     on_destroyed_callbacks: list[Callable[[], Awaitable[None]]] = []
     on_initialized_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_player_count_changed_callbacks: list[Callable[[], Awaitable[None]]] = []
 
-    def start_game(self):
-        if self.state != _GameState.READY_TO_START:
+    async def start_game(self):
+        if self.state != GameState.READY_TO_START:
             raise RuntimeError(f'start_game, incorrect state: {self.state}')
-        self.state = _GameState.STARTED
-        self.__on_started__()
+        self.state = GameState.STARTED
+        await self.__on_started__()
 
         self.current_player = self.admin
         self.__refill_deck__()
@@ -53,11 +54,11 @@ class Game:
         for player in self.players:
             self.__pick_up_cards__(player, 7)
 
-        self.state = _GameState.ONGOING
-        self.__on_ongoing__()
+        self.state = GameState.ONGOING
+        await self.__on_ongoing__()
 
-    def process_turn(self, discord_tag: str, card_id: int | None, wild_color: Color | None):
-        if self.state != _GameState.ONGOING:
+    async def process_turn(self, discord_tag: str, card_id: int | None, wild_color: Color | None):
+        if self.state != GameState.ONGOING:
             raise RuntimeError(f'process_turn, incorrect state: {self.state}')
         player = next(player for player in self.players if player.discord_tag == discord_tag)
         if player != self.current_player:
@@ -101,8 +102,8 @@ class Game:
         self.playersToCards[player].remove(card)
         finished = self.__check_game_finished__(player)
         if finished:
-            self.state = _GameState.FINISHED
-            self.__on_finished__(player)
+            self.state = GameState.FINISHED
+            await self.__on_finished__(player)
 
     def __check_game_finished__(self, player: Player) -> bool:
         return len(self.playersToCards[player]) == 0
@@ -173,56 +174,64 @@ class Game:
         return [r, b, g, y]
 
     def __init__(self, admin):
-        self.state = _GameState.INITIALIZED
+        self.state = GameState.INITIALIZED
         self.admin = admin
         self.players.append(admin)
 
-    def add_player(self, player: Player):
-        if self.state != _GameState.INITIALIZED and self.state != _GameState.READY_TO_START:
+    async def add_player(self, player: Player):
+        if self.state != GameState.INITIALIZED and self.state != GameState.READY_TO_START:
             raise RuntimeError(f'add_player, incorrect state: {self.state}')
         if next((p for p in self.players if player.discord_tag == p.discord_tag), None) is not None:
             raise RuntimeError(f'add_player, cannot add already existing player {player.nickname}')
         self.players.append(player)
-        if self.state == _GameState.INITIALIZED and len(self.players) >= 2:
-            self.state = _GameState.READY_TO_START
-            self.__on_ready__()
+        await self.__on_player_count_changed__()
+        if self.state == GameState.INITIALIZED and len(self.players) >= 2:
+            self.state = GameState.READY_TO_START
+            await self.__on_ready__()
 
-    def remove_player(self, player: Player):
-        if self.state != _GameState.INITIALIZED and self.state != _GameState.READY_TO_START:
+    async def remove_player(self, player: Player):
+        if self.state != GameState.INITIALIZED and self.state != GameState.READY_TO_START:
             raise RuntimeError(f'remove_player, incorrect state: {self.state}')
         if self.admin == player:
             raise RuntimeError(f'remove_player, cannot remove admin from game')
+        if next((p for p in self.players if p.discord_tag == player.discord_tag), None) is None:
+            raise RuntimeError(f'remove_player, player is not part of the game')
         self.players.remove(player)
-        if self.state == _GameState.READY_TO_START and len(self.players) < 2:
-            self.state = _GameState.INITIALIZED
-            self.__on_initialized__()
+        await self.__on_player_count_changed__()
+        if self.state == GameState.READY_TO_START and len(self.players) < 2:
+            self.state = GameState.INITIALIZED
+            await self.__on_initialized__()
 
     async def __on_ready__(self):
-        if self.state == _GameState.READY_TO_START:
+        if self.state == GameState.READY_TO_START:
             for callback in self.on_ready_callbacks:
                 await callback()
 
     async def __on_started__(self):
-        if self.state == _GameState.STARTED:
+        if self.state == GameState.STARTED:
             for callback in self.on_started_callbacks:
                 await callback()
 
     async def __on_ongoing__(self):
-        if self.state == _GameState.ONGOING:
+        if self.state == GameState.ONGOING:
             for callback in self.on_ongoing_callbacks:
                 await callback()
 
     async def __on_finished__(self, winner: Player):
-        if self.state == _GameState.FINISHED:
+        if self.state == GameState.FINISHED:
             for callback in self.on_finished_callbacks:
                 await callback(winner)
 
     async def __on_destroyed__(self):
-        if self.state == _GameState.DESTROYED:
+        if self.state == GameState.DESTROYED:
             for callback in self.on_destroyed_callbacks:
                 await callback()
 
     async def __on_initialized__(self):
-        if self.state == _GameState.INITIALIZED:
+        if self.state == GameState.INITIALIZED:
             for callback in self.on_initialized_callbacks:
                 await callback()
+
+    async def __on_player_count_changed__(self):
+        for callback in self.on_player_count_changed_callbacks:
+            await callback()

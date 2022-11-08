@@ -81,9 +81,9 @@ class Game:
             self.pickup_stack = 0
         if not self.is_playable(card):
             raise RuntimeError()
-        if isinstance(card, Reverse):
+        if isinstance(card, Reverse) and len(self.players) > 2:
             self.is_reversed *= -1
-        elif isinstance(card, Skip):
+        elif isinstance(card, Skip) or (isinstance(card, Reverse) and len(self.players) == 2):
             p += 1
         elif isinstance(card, Plus):
             self.pickup_stack += 2
@@ -115,8 +115,11 @@ class Game:
             return True
         if new_card.color == self.current_color:
             return True
-        return isinstance(new_card, Number) and isinstance(self.current_card,
-                                                           Number) and new_card.number == self.current_card.number
+        return (isinstance(new_card, Number) and isinstance(self.current_card,
+                                                            Number) and new_card.number == self.current_card.number) or (
+                       isinstance(new_card, Skip) and (isinstance(self.current_card, Skip))) or (
+                       isinstance(new_card, Plus) and isinstance(self.current_card, Plus)) or (
+                       isinstance(self.current_card, Reverse) and isinstance(new_card, Reverse))
 
     def __put_first_card__(self):
         first_card = next(card for card in self.deck if isinstance(card, Number))

@@ -41,6 +41,7 @@ class Game:
     on_destroyed_callbacks: list[Callable[[], Awaitable[None]]] = []
     on_initialized_callbacks: list[Callable[[], Awaitable[None]]] = []
     on_player_count_changed_callbacks: list[Callable[[], Awaitable[None]]] = []
+    on_turn_completed_callbacks: list[Callable[[], Awaitable[None]]] = []
 
     async def start_game(self):
         if self.state != GameState.READY_TO_START:
@@ -61,7 +62,7 @@ class Game:
         if self.state != GameState.ONGOING:
             raise RuntimeError(f'process_turn, incorrect state: {self.state}')
         player = next(player for player in self.players if player.discord_tag == discord_tag)
-        if player != self.current_player:
+        if player.discord_tag != self.current_player.discord_tag:
             raise RuntimeError(
                 f'process_turn, incorrect player: {player.discord_tag}, expected {self.current_player.discord_tag}')
         p = 1
@@ -70,32 +71,31 @@ class Game:
             self.pickup_stack = 0
             self.current_player = self.players[
                 (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
+            await self.__on_turn_completed__()
             return
         cards = self.playersToCards[player]
         card = next(card for card in cards if card.id == card_id)
         pickup_stack_exists = self.pickup_stack != 0
+        if not card.is_plus_card and pickup_stack_exists:
+            self.__pick_up_cards__(player, self.pickup_stack)
+            self.pickup_stack = 0
         if not self.is_playable(card):
             raise RuntimeError()
-        if card is Reverse:
+        if isinstance(card, Reverse):
             self.is_reversed *= -1
-        elif card is Skip:
+        elif isinstance(card, Skip):
             p += 1
-        elif card is Plus:
+        elif isinstance(card, Plus):
             self.pickup_stack += 2
-        elif card is WildPlus:
+        elif isinstance(card, WildPlus):
             self.pickup_stack += 4
             self.current_color = wild_color
-        elif card is Wild:
+        elif isinstance(card, Wild):
             self.current_color = wild_color
-        elif card is Number:
+        elif isinstance(card, Number):
             if card.color != self.current_color:
                 self.current_color = card.color
 
-        if not card.is_plus_card or not pickup_stack_exists:
-            self.__pick_up_cards__(player, self.pickup_stack)
-            self.pickup_stack = 0
-        # todo: implement pickup logic
-        # todo: implement wild stack logic
         self.current_player = self.players[
             (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
         self.current_card = card
@@ -104,16 +104,19 @@ class Game:
         if finished:
             self.state = GameState.FINISHED
             await self.__on_finished__(player)
+        else:
+            await self.__on_turn_completed__()
 
     def __check_game_finished__(self, player: Player) -> bool:
         return len(self.playersToCards[player]) == 0
 
     def is_playable(self, new_card: Card) -> bool:
-        if new_card is Wild or new_card is WildPlus:
+        if isinstance(new_card, Wild) or isinstance(new_card, WildPlus):
             return True
         if new_card.color == self.current_color:
             return True
-        return new_card is Number and self.current_card is Number and new_card.number == self.current_card.number
+        return isinstance(new_card, Number) and isinstance(self.current_card,
+                                                           Number) and new_card.number == self.current_card.number
 
     def __put_first_card__(self):
         first_card = next(card for card in self.deck if isinstance(card, Number))
@@ -234,4 +237,8 @@ class Game:
 
     async def __on_player_count_changed__(self):
         for callback in self.on_player_count_changed_callbacks:
+            await callback()
+
+    async def __on_turn_completed__(self):
+        for callback in self.on_turn_completed_callbacks:
             await callback()

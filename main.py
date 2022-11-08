@@ -8,18 +8,21 @@ f = open('./token.txt', 'r')
 TOKEN = f.read()
 
 channel_to_game: dict[int, tuple[Game, discord.Message]] = {}
+game_to_player_cards: dict[Game, dict[Player, list[discord.Message]]] = {}
 
 bot = commands.Bot(case_insensitive=True, intents=discord.Intents.all(), command_prefix='/')
 
 
 async def finish_game(message: discord.Message, winner: Player):
-    await message.edit(content=f'The game is finished. The winner is {winner.nickname}')
-    channel_to_game.pop(message.channel.id, None)
+    await message.edit(content=f'The game is finished. The winner is {winner.nickname}', view=View())
+    (g, _) = channel_to_game.pop(message.channel.id, None)
+    game_to_player_cards.pop(g)
 
 
 async def abort_game(message: discord.Message):
-    await message.edit(content=f'The game is aborted.')
-    channel_to_game.pop(message.channel.id, None)
+    await message.edit(content=f'The game is aborted.', view=View())
+    (g, _) = channel_to_game.pop(message.channel.id, None)
+    game_to_player_cards.pop(g)
 
 
 async def join_game_callback(interaction: discord.Interaction):
@@ -57,6 +60,9 @@ async def abort_button_callback(interaction: discord.Interaction):
 async def start_game_callback(interaction: discord.Interaction):
     g, _ = channel_to_game[interaction.channel.id]
     try:
+        game_to_player_cards[g] = {}
+        for player in g.players:
+            game_to_player_cards[g][player] = []
         await g.start_game()
         await interaction.response.defer()
     except RuntimeError:
@@ -75,6 +81,80 @@ def create_init_buttons(start_active: bool) -> list[Button]:
     return [join_button, leave_button, abort_button, start_button]
 
 
+def create_wild_pick_color_view(game: Game, player: Player, card_id: int) -> View:
+    color_buttons = []
+    for color in Color:
+        async def color_button_callback(interaction: discord.Interaction):
+            await game.process_turn(discord_tag=player.discord_tag, card_id=card_id,
+                                    wild_color=Color(int(interaction.data['custom_id'])))
+
+            await interaction.response.edit_message(content='Your hand', view=create_view_card_view(game, player))
+
+        color_buttons.append(Button(custom_id=str(color.value), label=f'{color}'))
+        color_buttons[-1].callback = color_button_callback
+
+    async def return_color_button_callback(interaction: discord.Interaction):
+        await game.process_turn(discord_tag=player.discord_tag, card_id=card_id,
+                                wild_color=None)
+
+        await interaction.response.edit_message(content='Your hand', view=create_view_card_view(game, player))
+
+    color_buttons.append(Button(label='Back'))
+    color_buttons[-1].callback = return_color_button_callback
+    v = View()
+    for i in color_buttons:
+        v.add_item(i)
+    return v
+
+
+def create_view_card_view(game: Game, player: Player) -> View:
+    async def draw_card_callback(interaction: discord.Interaction):
+        await game.process_turn(player.discord_tag, None, None)
+        await interaction.response.defer()
+        pass
+
+    buttons = []
+    for card in game.playersToCards[player]:
+        async def regular_card_callback(interaction: discord.Interaction):
+            await game.process_turn(player.discord_tag, int(interaction.data['custom_id']), None)
+            await interaction.response.defer()
+
+        async def wild_card_callback(interaction: discord.Interaction):
+            await interaction.response.edit_message(content='Your hand',
+                                                    view=create_wild_pick_color_view(game, player, int(
+                                                        interaction.data['custom_id'])))
+
+        buttons.append(Button(label=f'{card}', custom_id=str(card.id), disabled=(
+                not game.is_playable(card) or game.current_player.discord_tag != player.discord_tag)))
+        if isinstance(card, Wild) or isinstance(card, WildPlus):
+            buttons[-1].callback = wild_card_callback
+        else:
+            buttons[-1].callback = regular_card_callback
+    buttons.append(Button(label='Draw a card', disabled=game.current_player.discord_tag != player.discord_tag))
+    buttons[-1].callback = draw_card_callback
+    v = View()
+    for button in buttons:
+        v.add_item(button)
+    return v
+
+
+async def view_cards_button_callback(interaction: discord.Interaction):
+    (g, _) = channel_to_game[interaction.channel.id]
+    p = next(player for player in g.players if player.discord_tag == interaction.user.id)
+    await interaction.response.send_message(content='Your hand', view=create_view_card_view(g, p), ephemeral=True)
+    msg = await interaction.original_response()
+    game_to_player_cards[g][p].append(msg)
+
+
+def create_in_game_buttons() -> list[Button]:
+    view_cards_button = Button(label='View cards')
+    view_cards_button.callback = view_cards_button_callback
+    abort_button = Button(label='Abort game')
+    abort_button.callback = abort_button_callback
+
+    return [view_cards_button, abort_button]
+
+
 async def reformat_game_message(channel_id: int):
     game, game_message = channel_to_game[channel_id]
     v = View()
@@ -85,7 +165,16 @@ async def reformat_game_message(channel_id: int):
         msg = f'Initialized a new game\nCurrently in game:\n{players_str}'
         await game_message.edit(content=msg, view=v)
     if game.state == GameState.ONGOING:
-        pass
+        for button in create_in_game_buttons():
+            v.add_item(button)
+        players_str = '\n'.join(
+            list(map(lambda p: f'{p.nickname} – {len(game.playersToCards[p])} cards', game.players)))
+
+        msg = f'The game is ongoing\nIt is {game.current_player.nickname}\'s turn\nCurrent pickup stack is {game.pickup_stack}\nCurrent color is {game.current_color}\nLast card was {game.current_card}\n{players_str}\n'
+        await game_message.edit(content=msg, view=v)
+        for player in game.players:
+            for message in game_to_player_cards[game][player]:
+                await message.edit(content='Your hand', view=create_view_card_view(game, player))
 
 
 @bot.command(name='uno', description='Starts a new uno game')
@@ -109,6 +198,8 @@ async def uno(ctx: commands.Context):
     g.on_initialized_callbacks.append(lambda: reformat_game_message(ctx.channel.id))
     g.on_ongoing_callbacks.append(lambda: reformat_game_message(ctx.channel.id))
     g.on_finished_callbacks.append(lambda p: finish_game(game_message, p))
+    g.on_player_count_changed_callbacks.append(lambda: reformat_game_message(ctx.channel.id))
+    g.on_turn_completed_callbacks.append(lambda: reformat_game_message(ctx.channel.id))
 
 
 # @bot.event

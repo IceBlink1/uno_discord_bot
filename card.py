@@ -8,6 +8,15 @@ class Color(Enum):
     YELLOW = 3
     GREEN = 4
 
+    def __str__(self):
+        if self.value == Color.RED.value:
+            return 'Red'
+        if self.value == Color.GREEN.value:
+            return 'Green'
+        if self.value == Color.YELLOW.value:
+            return 'Yellow'
+        return 'Blue'
+
 
 class Card(ABC):
     id: int
@@ -24,6 +33,9 @@ class Wild(Card):
     def __init__(self, id: int):
         self.id = id
 
+    def __str__(self):
+        return "Wild"
+
 
 class WildPlus(Card):
     is_plus_card = True
@@ -33,6 +45,9 @@ class WildPlus(Card):
     def __init__(self, id: int):
         self.id = id
 
+    def __str__(self):
+        return 'Wild +4'
+
 
 class Plus(Card):
     is_plus_card = True
@@ -41,6 +56,9 @@ class Plus(Card):
     def __init__(self, color: Color, id: int):
         self.color = color
         self.id = id
+
+    def __str__(self):
+        return str(self.color) + ' +2'
 
 
 class Number(Card):
@@ -53,6 +71,9 @@ class Number(Card):
         self.number = number
         self.id = id
 
+    def __str__(self):
+        return f'{self.color} {self.number}'
+
 
 class Skip(Card):
     is_plus_card = False
@@ -62,6 +83,9 @@ class Skip(Card):
         self.color = color
         self.id = id
 
+    def __str__(self):
+        return f'{self.color} skip'
+
 
 class Reverse(Card):
     is_plus_card = False
@@ -70,3 +94,6 @@ class Reverse(Card):
     def __init__(self, color: Color, id: int):
         self.color = color
         self.id = id
+
+    def __str__(self):
+        return f'{self.color} reverse'

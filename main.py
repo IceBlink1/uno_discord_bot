@@ -59,6 +59,8 @@ async def abort_button_callback(interaction: discord.Interaction):
 
 async def start_game_callback(interaction: discord.Interaction):
     g, _ = channel_to_game[interaction.channel.id]
+    if interaction.user.id != g.admin.discord_tag:
+        await interaction.response.send_message(content='Only an admin can start the game', ephemeral=True)
     try:
         game_to_player_cards[g] = {}
         for player in g.players:
@@ -140,7 +142,9 @@ def create_view_card_view(game: Game, player: Player) -> View:
 
 async def view_cards_button_callback(interaction: discord.Interaction):
     (g, _) = channel_to_game[interaction.channel.id]
-    p = next(player for player in g.players if player.discord_tag == interaction.user.id)
+    p = next((player for player in g.players if player.discord_tag == interaction.user.id), None)
+    if p is None:
+        await interaction.response.send_message(content='You are not participating in this game.', ephemeral=True)
     await interaction.response.send_message(content='Your hand', view=create_view_card_view(g, p), ephemeral=True)
     msg = await interaction.original_response()
     game_to_player_cards[g][p].append(msg)

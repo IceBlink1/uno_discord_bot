@@ -1,4 +1,4 @@
-from typing import Callable, Coroutine, Awaitable
+from typing import Callable, Awaitable
 from card import *
 import random
 
@@ -83,10 +83,16 @@ class Game:
             raise RuntimeError()
         if isinstance(card, Reverse) and len(self.players) > 2:
             self.is_reversed *= -1
+            if card.color != self.current_color:
+                self.current_color = card.color
         elif isinstance(card, Skip) or (isinstance(card, Reverse) and len(self.players) == 2):
             p += 1
+            if card.color != self.current_color:
+                self.current_color = card.color
         elif isinstance(card, Plus):
             self.pickup_stack += 2
+            if card.color != self.current_color:
+                self.current_color = card.color
         elif isinstance(card, WildPlus):
             self.pickup_stack += 4
             self.current_color = wild_color

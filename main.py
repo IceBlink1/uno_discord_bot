@@ -4,7 +4,7 @@ from discord.ui import View, Button
 
 from game import *
 
-f = open('./token.txt', 'r')
+f = open('token.txt', 'r')
 TOKEN = f.read()
 
 channel_to_game: dict[int, tuple[Game, discord.Message]] = {}

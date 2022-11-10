@@ -22,26 +22,7 @@ class Player:
 
 
 class Game:
-    state: GameState
-    players: list[Player] = []
-    playersToCards: dict[Player, list[Card]] = {}
-    deck: list[Card] = []
-    current_card: Card
-    current_color: Color
-    admin: Player
-    current_player: Player
-    pickup_stack = 0
-    max_card_id = -1
-    is_reversed = 1  # -1 if reversed
 
-    on_ready_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_started_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_ongoing_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_finished_callbacks: list[Callable[[Player], Awaitable[None]]] = []
-    on_destroyed_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_initialized_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_player_count_changed_callbacks: list[Callable[[], Awaitable[None]]] = []
-    on_turn_completed_callbacks: list[Callable[[], Awaitable[None]]] = []
 
     async def start_game(self):
         if self.state != GameState.READY_TO_START:
@@ -186,6 +167,26 @@ class Game:
         return [r, b, g, y]
 
     def __init__(self, admin):
+        self.state: GameState
+        self.players: list[Player] = []
+        self.playersToCards: dict[Player, list[Card]] = {}
+        self.deck: list[Card] = []
+        self.current_card: Card
+        self.current_color: Color
+        self.admin: Player
+        self.current_player: Player
+        self.pickup_stack = 0
+        self.max_card_id = -1
+        self.is_reversed = 1  # -1 if reversed
+
+        self.on_ready_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_started_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_ongoing_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_finished_callbacks: list[Callable[[Player], Awaitable[None]]] = []
+        self.on_destroyed_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_initialized_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_player_count_changed_callbacks: list[Callable[[], Awaitable[None]]] = []
+        self.on_turn_completed_callbacks: list[Callable[[], Awaitable[None]]] = []
         self.state = GameState.INITIALIZED
         self.admin = admin
         self.players.append(admin)

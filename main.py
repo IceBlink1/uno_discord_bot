@@ -16,7 +16,7 @@ bot = commands.Bot(case_insensitive=True, intents=discord.Intents.all(), command
 async def finish_game(message: discord.Message, winner: Player):
     await message.edit(content=f'The game is finished. The winner is {winner.nickname}', view=View())
     (g, _) = channel_to_game.pop(message.channel.id, None)
-    game_to_player_cards.pop(g)
+    game_to_player_cards.pop(g, None)
 
 
 async def abort_game(message: discord.Message):
@@ -96,8 +96,8 @@ def create_wild_pick_color_view(game: Game, player: Player, card_id: int) -> Vie
         color_buttons[-1].callback = color_button_callback
 
     async def return_color_button_callback(interaction: discord.Interaction):
-        await game.process_turn(discord_tag=player.discord_tag, card_id=card_id,
-                                wild_color=None)
+        # await game.process_turn(discord_tag=player.discord_tag, card_id=card_id,
+        #                         wild_color=None)
 
         await interaction.response.edit_message(content='Your hand', view=create_view_card_view(game, player))
 

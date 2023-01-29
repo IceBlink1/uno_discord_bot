@@ -14,13 +14,13 @@ bot = commands.Bot(case_insensitive=True, intents=discord.Intents.all(), command
 
 
 async def finish_game(message: discord.Message, winner: Player):
-    await message.edit(content=f'The game is finished. The winner is {winner.nickname}', view=View())
+    await message.edit(content=f'The game is finished. The winner is {winner.nickname}', view=View(timeout=None))
     (g, _) = channel_to_game.pop(message.channel.id, None)
     game_to_player_cards.pop(g, None)
 
 
 async def abort_game(message: discord.Message):
-    await message.edit(content=f'The game is aborted.', view=View())
+    await message.edit(content=f'The game is aborted.', view=View(timeout=None))
     (g, _) = channel_to_game.pop(message.channel.id, None)
     game_to_player_cards.pop(g)
 
@@ -103,7 +103,7 @@ def create_wild_pick_color_view(game: Game, player: Player, card_id: int) -> Vie
 
     color_buttons.append(Button(label='Back'))
     color_buttons[-1].callback = return_color_button_callback
-    v = View()
+    v = View(timeout=None)
     for i in color_buttons:
         v.add_item(i)
     return v
@@ -134,7 +134,7 @@ def create_view_card_view(game: Game, player: Player) -> View:
             buttons[-1].callback = regular_card_callback
     buttons.append(Button(label='Draw a card', disabled=game.current_player.discord_tag != player.discord_tag))
     buttons[-1].callback = draw_card_callback
-    v = View()
+    v = View(timeout=None)
     for button in buttons:
         v.add_item(button)
     return v
@@ -161,7 +161,7 @@ def create_in_game_buttons() -> list[Button]:
 
 async def reformat_game_message(channel_id: int):
     game, game_message = channel_to_game[channel_id]
-    v = View()
+    v = View(timeout=None)
     if game.state == GameState.INITIALIZED or game.state == GameState.READY_TO_START:
         for button in create_init_buttons(game.state == GameState.READY_TO_START):
             v.add_item(button)
@@ -192,7 +192,7 @@ async def uno(ctx: commands.Context):
         return
     g = Game(admin)
     msg = f'Initialized a new game\nCurrently in game:\n{admin.nickname}'
-    v = View()
+    v = View(timeout=None)
 
     for button in create_init_buttons(False):
         v.add_item(button)

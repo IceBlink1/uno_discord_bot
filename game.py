@@ -31,6 +31,7 @@ class Game:
         await self.__on_started__()
 
         self.current_player = self.admin
+        self.last_player = None
         self.__refill_deck__()
         self.__put_first_card__()
         for player in self.players:
@@ -50,6 +51,7 @@ class Game:
         if card_id is None:  # draw card button pressed
             self.__pick_up_cards__(player, 1 + self.pickup_stack)
             self.pickup_stack = 0
+            self.last_player = self.current_player
             self.current_player = self.players[
                 (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
             await self.__on_turn_completed__()
@@ -83,6 +85,7 @@ class Game:
             if card.color != self.current_color:
                 self.current_color = card.color
 
+        self.last_player = self.current_player
         self.current_player = self.players[
             (self.players.index(self.current_player) + p * self.is_reversed) % len(self.players)]
         self.current_card = card
@@ -175,6 +178,7 @@ class Game:
         self.current_color: Color
         self.admin: Player
         self.current_player: Player
+        self.last_player: Player
         self.pickup_stack = 0
         self.max_card_id = -1
         self.is_reversed = 1  # -1 if reversed
@@ -189,6 +193,7 @@ class Game:
         self.on_turn_completed_callbacks: list[Callable[[], Awaitable[None]]] = []
         self.state = GameState.INITIALIZED
         self.admin = admin
+        self.last_player = None
         self.players.append(admin)
 
     async def add_player(self, player: Player):

@@ -8,7 +8,7 @@ f = open('token.txt', 'r')
 TOKEN = f.read()
 
 channel_to_game: dict[int, tuple[Game, discord.Message]] = {}
-game_to_player_cards: dict[Game, dict[Player, list[discord.Message]]] = {}
+game_to_player_cards: dict[Game, dict[Player, discord.Message | None]] = {}
 
 bot = commands.Bot(case_insensitive=True, intents=discord.Intents.all(), command_prefix='/')
 
@@ -64,7 +64,7 @@ async def start_game_callback(interaction: discord.Interaction):
     try:
         game_to_player_cards[g] = {}
         for player in g.players:
-            game_to_player_cards[g][player] = []
+            game_to_player_cards[g][player] = None
         await g.start_game()
         await interaction.response.defer()
     except RuntimeError:
@@ -147,7 +147,7 @@ async def view_cards_button_callback(interaction: discord.Interaction):
         await interaction.response.send_message(content='You are not participating in this game.', ephemeral=True)
     await interaction.response.send_message(content='Your hand', view=create_view_card_view(g, p), ephemeral=True)
     msg = await interaction.original_response()
-    game_to_player_cards[g][p].append(msg)
+    game_to_player_cards[g][p] = msg
 
 
 def create_in_game_buttons() -> list[Button]:
@@ -176,9 +176,14 @@ async def reformat_game_message(channel_id: int):
 
         msg = f'The game is ongoing\nIt is {game.current_player.nickname}\'s turn\nCurrent pickup stack is {game.pickup_stack}\nCurrent color is {game.current_color}\nLast card was {game.current_card}\n{players_str}\n'
         await game_message.edit(content=msg, view=v)
-        for player in game.players:
-            for message in game_to_player_cards[game][player]:
-                await message.edit(content='Your hand', view=create_view_card_view(game, player))
+
+        if game_to_player_cards[game][game.current_player]:
+            message = game_to_player_cards[game][game.current_player]
+            await message.edit(content='Your hand', view=create_view_card_view(game, game.current_player))
+
+        if game_to_player_cards[game][game.last_player]:
+            message = game_to_player_cards[game][game.last_player]
+            await message.edit(content='Your hand', view=create_view_card_view(game, game.last_player))
 
 
 @bot.command(name='uno', description='Starts a new uno game')
